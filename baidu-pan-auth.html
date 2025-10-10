@@ -102,7 +102,7 @@
             </label>
             <label>
                 <strong>CORS代理地址:</strong>
-                <input type="text" id="proxyUrl" placeholder="例如：https://your-worker.workers.dev/?url=">
+                <input type="text" id="proxyUrl" value="https://langyaai-cors.tianruifan21.workers.dev/?url=" style="background-color: #e9ecef;">
             </label>
             <p style="color: #666; font-size: 14px;">
                 ⚠️ <strong>重要配置：</strong><br>
@@ -161,8 +161,8 @@
         let accessToken = null;
         let appKey = 'AQoN4IEJyNj71Sp51rl3378udvSuknBu'; // 预配置的AppKey
         let redirectUri = 'https://langya-ai.pages.dev/baidu-pan-auth.html';
-        // CORS代理URL - 部署Worker后需要更新此URL
-        let proxyUrl = 'https://your-worker-name.your-subdomain.workers.dev/?url=';
+        // CORS代理URL - 已配置
+        let proxyUrl = 'https://langyaai-cors.tianruifan21.workers.dev/?url=';
 
         // 页面加载时的初始化
         window.onload = function() {
@@ -194,8 +194,8 @@
                 return;
             }
             
-            if (!proxyUrl || proxyUrl === 'https://your-worker-name.your-subdomain.workers.dev/?url=') {
-                showStatus('⚠️ 请先部署Cloudflare Worker并配置CORS代理地址！详见下方说明。', 'error');
+            if (!proxyUrl) {
+                showStatus('⚠️ 请配置CORS代理地址！详见下方说明。', 'error');
                 return;
             }
             
@@ -204,12 +204,12 @@
             localStorage.setItem('baidu_pan_redirect_uri', redirectUri);
             localStorage.setItem('baidu_pan_proxy_url', proxyUrl);
             
-            showStatus('配置已保存！回调地址: ' + redirectUri, 'success');
+            showStatus('✅ 配置已保存！回调地址: ' + redirectUri + '<br>CORS代理: ' + proxyUrl, 'success');
             document.getElementById('authBtn').disabled = false;
             
             // 提示用户在百度开放平台配置
             setTimeout(() => {
-                showStatus('✅ 配置已保存！<br>📌 <strong>下一步：</strong>请前往<a href="https://pan.baidu.com/union/console/applist" target="_blank" style="color: #0056b3;">百度网盘开放平台</a>，在应用设置中配置回调地址：<br><code style="background: #fff; padding: 5px; display: inline-block; margin-top: 5px;">' + redirectUri + '</code>', 'info');
+                showStatus('✅ 所有配置已完成！<br>📌 <strong>下一步：</strong>请前往<a href="https://pan.baidu.com/union/console/applist" target="_blank" style="color: #0056b3;">百度网盘开放平台</a>，在应用设置中配置回调地址：<br><code style="background: #fff; padding: 5px; display: inline-block; margin-top: 5px;">' + redirectUri + '</code>', 'info');
             }, 2000);
         }
 
