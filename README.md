@@ -23,6 +23,20 @@ AppKey: AQoN4IEJyNj71Sp51rl3378udvSuknBu
 应用类型: 软件应用
 ```
 
+## ⚠️ 重要：CORS 跨域问题
+
+百度网盘API不支持浏览器直接跨域访问，你需要部署一个 **Cloudflare Worker** 作为代理。
+
+### 快速解决（5分钟）：
+
+1. **创建Worker** - 在Cloudflare Dashboard创建Worker
+2. **复制代码** - 将项目中的 `worker.js` 代码粘贴到Worker
+3. **配置代理** - 在页面中填入Worker URL
+
+📖 详细步骤请查看：**[`CORS-SOLUTION.md`](./CORS-SOLUTION.md)** 或 **[`WORKER-SETUP.md`](./WORKER-SETUP.md)**
+
+---
+
 ## 快速部署到 Cloudflare Pages
 
 ### 方法1: 通过GitHub部署（推荐）
