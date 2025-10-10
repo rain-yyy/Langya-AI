@@ -123,7 +123,25 @@
             <button id="authBtn" onclick="startAuth()">1. 点击授权</button>
             <button id="getUserBtn" onclick="getUserInfo()" disabled>2. 获取用户信息</button>
             <button id="getFilesBtn" onclick="getFileList()" disabled>3. 获取文件列表</button>
+            <button id="getStatsBtn" onclick="getFolderStats()" disabled>4. 获取格式化统计信息</button>
             <button onclick="clearToken()">清除授权</button>
+        </div>
+        
+        <div class="config-section" style="margin-top: 20px;">
+            <h3>Firebase API 配置</h3>
+            <label>
+                <strong>Firebase API URL:</strong>
+                <input type="text" id="firebaseUrl" placeholder="https://your-firebase-function-url.cloudfunctions.net/getFolderInfo/folder-stats">
+            </label>
+            <label>
+                <strong>API Key:</strong>
+                <input type="password" id="apiKey" placeholder="your-api-key">
+            </label>
+            <label>
+                <strong>文件夹路径:</strong>
+                <input type="text" id="folderPath" value="/" placeholder="/">
+            </label>
+            <button onclick="saveFirebaseConfig()">保存 Firebase 配置</button>
         </div>
 
         <div id="fileList" class="file-list"></div>
@@ -163,6 +181,9 @@
         let redirectUri = 'https://langya-ai.pages.dev/baidu-pan-auth.html';
         // CORS代理URL - 已配置
         let proxyUrl = 'https://langyaai-cors.tianruifan21.workers.dev/?url=';
+        // Firebase API 配置
+        let firebaseUrl = '';
+        let apiKey = '';
 
         // 页面加载时的初始化
         window.onload = function() {
@@ -244,6 +265,9 @@
             const savedRedirectUri = localStorage.getItem('baidu_pan_redirect_uri');
             const savedProxyUrl = localStorage.getItem('baidu_pan_proxy_url');
             const savedToken = localStorage.getItem('baidu_pan_access_token');
+            const savedFirebaseUrl = localStorage.getItem('firebase_api_url');
+            const savedApiKey = localStorage.getItem('firebase_api_key');
+            const savedFolderPath = localStorage.getItem('folder_path');
             
             if (savedAppKey) {
                 document.getElementById('appKey').value = savedAppKey;
@@ -258,6 +282,20 @@
             if (savedProxyUrl) {
                 document.getElementById('proxyUrl').value = savedProxyUrl;
                 proxyUrl = savedProxyUrl;
+            }
+            
+            if (savedFirebaseUrl) {
+                document.getElementById('firebaseUrl').value = savedFirebaseUrl;
+                firebaseUrl = savedFirebaseUrl;
+            }
+            
+            if (savedApiKey) {
+                document.getElementById('apiKey').value = savedApiKey;
+                apiKey = savedApiKey;
+            }
+            
+            if (savedFolderPath) {
+                document.getElementById('folderPath').value = savedFolderPath;
             }
             
             if (savedToken) {
@@ -443,6 +481,147 @@
         function enableButtons() {
             document.getElementById('getUserBtn').disabled = false;
             document.getElementById('getFilesBtn').disabled = false;
+            document.getElementById('getStatsBtn').disabled = false;
+        }
+        
+        // 保存 Firebase 配置
+        function saveFirebaseConfig() {
+            firebaseUrl = document.getElementById('firebaseUrl').value.trim();
+            apiKey = document.getElementById('apiKey').value.trim();
+            const folderPath = document.getElementById('folderPath').value.trim();
+            
+            if (!firebaseUrl || !apiKey) {
+                showStatus('请填写完整的 Firebase 配置信息', 'error');
+                return;
+            }
+            
+            // 保存到localStorage
+            localStorage.setItem('firebase_api_url', firebaseUrl);
+            localStorage.setItem('firebase_api_key', apiKey);
+            localStorage.setItem('folder_path', folderPath);
+            
+            showStatus('✅ Firebase 配置已保存！', 'success');
+        }
+        
+        // 获取格式化的文件夹统计信息（通过 Firebase API）
+        async function getFolderStats() {
+            if (!accessToken) {
+                showStatus('请先进行授权', 'error');
+                return;
+            }
+            
+            if (!firebaseUrl || !apiKey) {
+                showStatus('请先配置 Firebase API', 'error');
+                return;
+            }
+            
+            try {
+                showStatus('正在通过 Firebase API 获取格式化统计信息...', 'info');
+                
+                const folderPath = document.getElementById('folderPath').value.trim() || '/';
+                
+                const response = await fetch(firebaseUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-key': apiKey
+                    },
+                    body: JSON.stringify({
+                        sourceMode: 'baidupan',
+                        accessToken: accessToken,
+                        folderPath: folderPath
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showStatus('✅ 格式化统计信息获取成功！', 'success');
+                    displayFolderStats(data);
+                } else {
+                    showStatus('获取统计信息失败: ' + (data.error || data.details || '未知错误'), 'error');
+                }
+            } catch (error) {
+                showStatus('请求失败: ' + error.message, 'error');
+            }
+        }
+        
+        // 显示格式化的文件夹统计信息
+        function displayFolderStats(stats) {
+            const fileListDiv = document.getElementById('fileList');
+            
+            let html = '<h3>📊 文件夹统计信息</h3>';
+            html += '<div class="file-item">';
+            html += '<p><strong>📁 文件夹路径:</strong> ' + stats.folderPath + '</p>';
+            html += '<p><strong>📂 文件夹数量:</strong> ' + stats.totalFolders + '</p>';
+            html += '<p><strong>📄 文件数量:</strong> ' + stats.totalFilesOnly + '</p>';
+            html += '<p><strong>📦 总数:</strong> ' + stats.totalFiles + '</p>';
+            html += '<p><strong>💾 总大小:</strong> ' + stats.totalSize + '</p>';
+            html += '<p><strong>💰 预计成本:</strong> $' + stats.calculatedCost.toFixed(2) + '</p>';
+            html += '</div>';
+            
+            // 文件类型统计
+            if (Object.keys(stats.fileTypes).length > 0) {
+                html += '<h4>📋 文件类型分布</h4>';
+                html += '<div class="file-item">';
+                for (const [type, count] of Object.entries(stats.fileTypes)) {
+                    const typeEmoji = {
+                        'image': '🖼️',
+                        'video': '🎬',
+                        'audio': '🎵',
+                        'application': '📦',
+                        'text': '📝'
+                    };
+                    html += '<p>' + (typeEmoji[type] || '📄') + ' <strong>' + type + ':</strong> ' + count + ' 个</p>';
+                }
+                html += '</div>';
+            }
+            
+            // 文件夹列表
+            if (stats.folders && stats.folders.length > 0) {
+                html += '<h4>📁 文件夹列表 (' + stats.folders.length + ')</h4>';
+                stats.folders.forEach(folder => {
+                    const modTime = new Date(folder.modifiedTime).toLocaleString('zh-CN');
+                    html += '<div class="file-item">';
+                    html += '<p><strong>📂 名称:</strong> ' + folder.name + '</p>';
+                    html += '<p><strong>路径:</strong> ' + folder.path + '</p>';
+                    html += '<p><strong>ID:</strong> ' + folder.id + '</p>';
+                    html += '<p><strong>修改时间:</strong> ' + modTime + '</p>';
+                    html += '</div>';
+                });
+            }
+            
+            // 文件列表（显示前10个）
+            if (stats.files && stats.files.length > 0) {
+                html += '<h4>📄 文件列表（前10个，共 ' + stats.files.length + '）</h4>';
+                const displayFiles = stats.files.slice(0, 10);
+                displayFiles.forEach(file => {
+                    const categoryEmoji = {
+                        1: '🎬', // 视频
+                        2: '🎵', // 音频
+                        3: '🖼️', // 图片
+                        4: '📝', // 文档
+                        5: '📱', // APP
+                        6: '📦', // 其他
+                        7: '🔗'  // bt种子
+                    };
+                    html += '<div class="file-item">';
+                    html += '<p>' + (categoryEmoji[file.category] || '📄') + ' <strong>名称:</strong> ' + file.name + '</p>';
+                    html += '<p><strong>大小:</strong> ' + file.size + '</p>';
+                    html += '<p><strong>类型:</strong> ' + file.type + '</p>';
+                    html += '<p><strong>路径:</strong> ' + file.path + '</p>';
+                    if (file.md5) {
+                        html += '<p><strong>MD5:</strong> ' + file.md5 + '</p>';
+                    }
+                    html += '</div>';
+                });
+                
+                if (stats.files.length > 10) {
+                    html += '<p style="text-align: center; color: #666;">还有 ' + (stats.files.length - 10) + ' 个文件未显示...</p>';
+                }
+            }
+            
+            fileListDiv.innerHTML = html;
         }
 
         // 清除授权
