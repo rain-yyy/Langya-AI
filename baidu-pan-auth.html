@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>百度网盘授权示例</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .container {
+            border: 1px solid #ccc;
+            padding: 20px;
+            border-radius: 5px;
+        }
+        button {
+            background-color: #2196F3;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background-color: #0b7dda;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .config-section {
+            background-color: #f5f5f5;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        .config-section input {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+            box-sizing: border-box;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .status.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+        }
+        .file-list {
+            margin-top: 20px;
+        }
+        .file-item {
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+            background-color: #fafafa;
+        }
+        .file-item strong {
+            color: #2196F3;
+        }
+        .token-info {
+            background-color: #fff3cd;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            word-break: break-all;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>百度网盘授权示例</h1>
+        
+        <div class="config-section">
+            <h3>配置信息</h3>
+            <p><strong>说明：</strong>应用已配置，请确认回调地址后点击保存。</p>
+            <label>
+                <strong>App Key:</strong>
+                <input type="text" id="appKey" value="AQoN4IEJyNj71Sp51rl3378udvSuknBu" readonly style="background-color: #e9ecef;">
+            </label>
+            <label>
+                <strong>授权回调地址:</strong>
+                <input type="text" id="redirectUri" placeholder="自动检测当前页面URL">
+            </label>
+            <p style="color: #666; font-size: 14px;">
+                ⚠️ <strong>重要：</strong>请在<a href="https://pan.baidu.com/union/console/applist" target="_blank">百度网盘开放平台</a>的应用设置中配置相同的回调地址。<br>
+                📝 回调地址格式：<code>https://your-domain.pages.dev/baidu-pan-auth.html</code><br>
+                💡 页面会自动检测当前URL作为回调地址，也可以手动修改。
+            </p>
+            <button onclick="autoDetectAndSave()">自动检测并保存</button>
+            <button onclick="saveConfig()">手动保存配置</button>
+        </div>
+
+        <div id="statusDiv"></div>
+        <div id="tokenDiv"></div>
+
+        <div>
+            <h3>操作</h3>
+            <button id="authBtn" onclick="startAuth()">1. 点击授权</button>
+            <button id="getUserBtn" onclick="getUserInfo()" disabled>2. 获取用户信息</button>
+            <button id="getFilesBtn" onclick="getFileList()" disabled>3. 获取文件列表</button>
+            <button onclick="clearToken()">清除授权</button>
+        </div>
+
+        <div id="fileList" class="file-list"></div>
+    </div>
+
+    <script>
+        // 全局变量
+        let accessToken = null;
+        let appKey = 'AQoN4IEJyNj71Sp51rl3378udvSuknBu'; // 预配置的AppKey
+        let redirectUri = null;
+
+        // 页面加载时的初始化
+        window.onload = function() {
+            // 自动检测当前URL
+            autoDetectRedirectUri();
+            
+            // 加载保存的配置
+            loadConfig();
+            
+            // 检查URL中是否有access_token（授权回调）
+            checkAuthCallback();
+        };
+
+        // 自动检测回调地址
+        function autoDetectRedirectUri() {
+            const currentUrl = window.location.origin + window.location.pathname;
+            document.getElementById('redirectUri').value = currentUrl;
+            document.getElementById('redirectUri').placeholder = currentUrl;
+        }
+
+        // 自动检测并保存
+        function autoDetectAndSave() {
+            autoDetectRedirectUri();
+            redirectUri = document.getElementById('redirectUri').value;
+            
+            if (!redirectUri) {
+                showStatus('无法检测到有效的URL', 'error');
+                return;
+            }
+            
+            // 保存到localStorage
+            localStorage.setItem('baidu_pan_app_key', appKey);
+            localStorage.setItem('baidu_pan_redirect_uri', redirectUri);
+            
+            showStatus('配置已保存！回调地址: ' + redirectUri, 'success');
+            document.getElementById('authBtn').disabled = false;
+            
+            // 提示用户在百度开放平台配置
+            setTimeout(() => {
+                showStatus('✅ 配置已保存！<br>📌 <strong>下一步：</strong>请前往<a href="https://pan.baidu.com/union/console/applist" target="_blank" style="color: #0056b3;">百度网盘开放平台</a>，在应用设置中配置回调地址：<br><code style="background: #fff; padding: 5px; display: inline-block; margin-top: 5px;">' + redirectUri + '</code>', 'info');
+            }, 2000);
+        }
+
+        // 保存配置
+        function saveConfig() {
+            appKey = document.getElementById('appKey').value.trim();
+            redirectUri = document.getElementById('redirectUri').value.trim();
+            
+            if (!appKey || !redirectUri) {
+                showStatus('请填写完整的配置信息', 'error');
+                return;
+            }
+            
+            // 保存到localStorage
+            localStorage.setItem('baidu_pan_app_key', appKey);
+            localStorage.setItem('baidu_pan_redirect_uri', redirectUri);
+            
+            showStatus('配置已保存', 'success');
+            document.getElementById('authBtn').disabled = false;
+        }
+
+        // 加载配置
+        function loadConfig() {
+            const savedAppKey = localStorage.getItem('baidu_pan_app_key');
+            const savedRedirectUri = localStorage.getItem('baidu_pan_redirect_uri');
+            const savedToken = localStorage.getItem('baidu_pan_access_token');
+            
+            if (savedAppKey) {
+                document.getElementById('appKey').value = savedAppKey;
+                appKey = savedAppKey;
+            }
+            
+            if (savedRedirectUri) {
+                document.getElementById('redirectUri').value = savedRedirectUri;
+                redirectUri = savedRedirectUri;
+            }
+            
+            if (savedToken) {
+                accessToken = savedToken;
+                showStatus('已检测到保存的Access Token', 'success');
+                showToken(accessToken);
+                enableButtons();
+            }
+            
+            if (appKey && redirectUri) {
+                document.getElementById('authBtn').disabled = false;
+            }
+        }
+
+        // 检查授权回调
+        function checkAuthCallback() {
+            const hash = window.location.hash;
+            
+            if (hash.includes('access_token=')) {
+                // 解析hash中的参数
+                const params = new URLSearchParams(hash.substring(1));
+                accessToken = params.get('access_token');
+                const expiresIn = params.get('expires_in');
+                
+                if (accessToken) {
+                    // 保存token
+                    localStorage.setItem('baidu_pan_access_token', accessToken);
+                    
+                    showStatus('授权成功！Access Token 已获取，有效期: ' + expiresIn + '秒（30天）', 'success');
+                    showToken(accessToken);
+                    enableButtons();
+                    
+                    // 清除URL中的hash
+                    history.replaceState(null, null, window.location.pathname);
+                }
+            }
+        }
+
+        // 开始授权
+        function startAuth() {
+            if (!appKey || !redirectUri) {
+                showStatus('请先配置并保存 App Key 和回调地址', 'error');
+                return;
+            }
+            
+            // 构造授权URL（简化模式）
+            const authUrl = 'http://openapi.baidu.com/oauth/2.0/authorize?' +
+                'response_type=token&' +
+                'client_id=' + encodeURIComponent(appKey) + '&' +
+                'redirect_uri=' + encodeURIComponent(redirectUri) + '&' +
+                'scope=basic,netdisk&' +
+                'display=page';
+            
+            showStatus('正在跳转到百度授权页面...', 'info');
+            
+            // 跳转到授权页面
+            window.location.href = authUrl;
+        }
+
+        // 获取用户信息
+        async function getUserInfo() {
+            if (!accessToken) {
+                showStatus('请先进行授权', 'error');
+                return;
+            }
+            
+            try {
+                showStatus('正在获取用户信息...', 'info');
+                
+                const response = await fetch(
+                    'https://pan.baidu.com/rest/2.0/xpan/nas?method=uinfo&access_token=' + accessToken
+                );
+                
+                const data = await response.json();
+                
+                if (data.errno === 0) {
+                    showStatus('用户信息获取成功', 'success');
+                    displayUserInfo(data);
+                } else {
+                    showStatus('获取用户信息失败: ' + (data.errmsg || data.errno), 'error');
+                }
+            } catch (error) {
+                showStatus('请求失败: ' + error.message, 'error');
+            }
+        }
+
+        // 获取文件列表
+        async function getFileList() {
+            if (!accessToken) {
+                showStatus('请先进行授权', 'error');
+                return;
+            }
+            
+            try {
+                showStatus('正在获取文件列表...', 'info');
+                
+                // 获取根目录的文件列表
+                const response = await fetch(
+                    'https://pan.baidu.com/rest/2.0/xpan/file?method=list&dir=/&access_token=' + accessToken
+                );
+                
+                const data = await response.json();
+                
+                if (data.errno === 0) {
+                    showStatus('文件列表获取成功，共 ' + data.list.length + ' 个项目', 'success');
+                    displayFileList(data.list);
+                } else {
+                    showStatus('获取文件列表失败: ' + (data.errmsg || data.errno), 'error');
+                }
+            } catch (error) {
+                showStatus('请求失败: ' + error.message, 'error');
+            }
+        }
+
+        // 显示用户信息
+        function displayUserInfo(data) {
+            const fileListDiv = document.getElementById('fileList');
+            fileListDiv.innerHTML = '<h3>用户信息</h3>' +
+                '<div class="file-item">' +
+                '<p><strong>百度账号UID:</strong> ' + (data.baidu_name || 'N/A') + '</p>' +
+                '<p><strong>网盘账号ID:</strong> ' + (data.netdisk_name || 'N/A') + '</p>' +
+                '<p><strong>头像地址:</strong> ' + (data.avatar_url || 'N/A') + '</p>' +
+                '<p><strong>VIP类型:</strong> ' + (data.vip_type || 0) + '</p>' +
+                '</div>';
+        }
+
+        // 显示文件列表
+        function displayFileList(fileList) {
+            const fileListDiv = document.getElementById('fileList');
+            
+            if (fileList.length === 0) {
+                fileListDiv.innerHTML = '<h3>文件列表</h3><p>根目录为空</p>';
+                return;
+            }
+            
+            let html = '<h3>文件列表（根目录）</h3>';
+            
+            fileList.forEach(file => {
+                const isDir = file.isdir === 1;
+                const fileType = isDir ? '文件夹' : '文件';
+                const size = isDir ? '-' : formatFileSize(file.size);
+                const mtime = new Date(file.server_mtime * 1000).toLocaleString('zh-CN');
+                
+                html += '<div class="file-item">' +
+                    '<p><strong>📁 名称:</strong> ' + file.server_filename + '</p>' +
+                    '<p><strong>类型:</strong> ' + fileType + '</p>' +
+                    '<p><strong>大小:</strong> ' + size + '</p>' +
+                    '<p><strong>路径:</strong> ' + file.path + '</p>' +
+                    '<p><strong>修改时间:</strong> ' + mtime + '</p>' +
+                    '<p><strong>fs_id:</strong> ' + file.fs_id + '</p>' +
+                    '</div>';
+            });
+            
+            fileListDiv.innerHTML = html;
+        }
+
+        // 格式化文件大小
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return (bytes / Math.pow(k, i)).toFixed(2) + ' ' + sizes[i];
+        }
+
+        // 显示状态消息
+        function showStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('statusDiv');
+            statusDiv.innerHTML = '<div class="status ' + type + '">' + message + '</div>';
+        }
+
+        // 显示Token信息
+        function showToken(token) {
+            const tokenDiv = document.getElementById('tokenDiv');
+            const shortToken = token.substring(0, 20) + '...' + token.substring(token.length - 20);
+            tokenDiv.innerHTML = '<div class="token-info"><strong>Access Token:</strong> ' + shortToken + '</div>';
+        }
+
+        // 启用操作按钮
+        function enableButtons() {
+            document.getElementById('getUserBtn').disabled = false;
+            document.getElementById('getFilesBtn').disabled = false;
+        }
+
+        // 清除授权
+        function clearToken() {
+            accessToken = null;
+            localStorage.removeItem('baidu_pan_access_token');
+            document.getElementById('tokenDiv').innerHTML = '';
+            document.getElementById('fileList').innerHTML = '';
+            document.getElementById('getUserBtn').disabled = true;
+            document.getElementById('getFilesBtn').disabled = true;
+            showStatus('授权已清除', 'info');
+        }
+    </script>
+</body>
+</html>
+
