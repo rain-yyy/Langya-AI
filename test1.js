@@ -1,6 +1,4 @@
-<script>
-    // v3: hide async option and set as default when storeid is data-entry-test
-    // v3: to fix onedrive folder picker
+
 
   //# variables init
   //v15
@@ -1286,4 +1284,4 @@
     }
 
   });
-</script>
+
