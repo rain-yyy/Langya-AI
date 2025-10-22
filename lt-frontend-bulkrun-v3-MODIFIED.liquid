@@ -1798,7 +1798,7 @@ Item added to your cart
     }
 
     async function populateInputFolder(selectedFolderId) {
-        if (sourceMode === 'premium' || sourceMode === 'premiumd' || sourceMode === 'premiuml' || sourceMode === 'premiumod') {
+        if (sourceMode === 'premium' || sourceMode === 'premiumd' || sourceMode === 'premiuml' || sourceMode === 'premiumod' || sourceMode === 'premiumbdpan') {
             inputFolder.value = selectedFolderId;
             viewFolderBtn.style.display = 'block';
             viewFolderBtn.disabled = false;
@@ -1813,7 +1813,7 @@ Item added to your cart
     }
 
     async function populateOutputFolder(OutputFolderId) {
-    if (sourceMode === 'premiumd' || sourceMode === 'premium' || sourceMode === 'premiuml' || sourceMode === 'premiumod') {
+    if (sourceMode === 'premiumd' || sourceMode === 'premium' || sourceMode === 'premiuml' || sourceMode === 'premiumod' || sourceMode === 'premiumbdpan') {
         outputFolder.value = OutputFolderId;
     } else {
         outputFolder.value = '';
@@ -3944,42 +3944,8 @@ Item added to your cart
 
   const ONEDRIVE_REDIRECT_URI = window.location.origin + window.location.pathname;
 
-  // 🆕 新增：初始化百度网盘管理器
-  function initBaiduPanManager() {
-    console.log('[BaiduPan] 初始化管理器...');
-    
-    if (!window.BaiduPanManager) {
-      console.error('[BaiduPan] BaiduPanManager 未加载');
-      showSnackbar('百度网盘模块加载失败', 'rgb(255, 100, 100)');
-      return false;
-    }
-    
-    // 创建管理器实例
-    baiduPanManager = new window.BaiduPanManager({
-      corsProxyUrl: BAIDU_PAN_CONFIG.corsProxyUrl,
-      redirectUri: BAIDU_PAN_CONFIG.redirectUri,
-      showSnackbar: showSnackbar,
-      onFolderSelected: async (data) => {
-        // 文件夹选择回调
-        if (data.isOutput) {
-          OutputFolderId = data.path;
-          outputfolderName = data.name;
-          await populateOutputFolder(OutputFolderId);
-        } else {
-          selectedFolderId = data.path;
-          folderName = data.name;
-          await populateInputFolder(selectedFolderId);
-        }
-        useOrNot = true;
-      }
-    });
-    
-    // 初始化API
-    baiduPanManager.init();
-    
-    console.log('[BaiduPan] ✅ 管理器初始化完成');
-    return true;
-  }
+  // 🆕 新增：百度网盘管理器初始化函数（将在 DOMContentLoaded 中调用）
+  // 此函数延迟定义，确保所有依赖的函数（如 showSnackbar, populateInputFolder 等）都已就绪
 
   //----------- Helper functions -----------:
   function addRoomLatestTime(timestamp, li) {
@@ -4479,6 +4445,43 @@ Item added to your cart
       setTimeout(() => {
         snackbar.style.display = 'none';
       }, 4000);
+    }
+
+    // 🆕 新增：初始化百度网盘管理器（在 showSnackbar 定义后调用）
+    function initBaiduPanManager() {
+      console.log('[BaiduPan] 初始化管理器...');
+      
+      if (!window.BaiduPanManager) {
+        console.error('[BaiduPan] BaiduPanManager 未加载');
+        showSnackbar('百度网盘模块加载失败', 'rgb(255, 100, 100)');
+        return false;
+      }
+      
+      // 创建管理器实例
+      baiduPanManager = new window.BaiduPanManager({
+        corsProxyUrl: BAIDU_PAN_CONFIG.corsProxyUrl,
+        redirectUri: BAIDU_PAN_CONFIG.redirectUri,
+        showSnackbar: showSnackbar,
+        onFolderSelected: async (data) => {
+          // 文件夹选择回调
+          if (data.isOutput) {
+            OutputFolderId = data.path;
+            outputfolderName = data.name;
+            await populateOutputFolder(OutputFolderId);
+          } else {
+            selectedFolderId = data.path;
+            folderName = data.name;
+            await populateInputFolder(selectedFolderId);
+          }
+          useOrNot = true;
+        }
+      });
+      
+      // 初始化API
+      baiduPanManager.init();
+      
+      console.log('[BaiduPan] ✅ 管理器初始化完成');
+      return true;
     }
 
     function toggleAttachButton(hide = true) {

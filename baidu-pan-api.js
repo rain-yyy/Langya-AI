@@ -126,28 +126,66 @@ class BaiduPanAPI {
    */
   async proxyFetch(url, options = {}) {
     if (!this.CORS_PROXY) {
-      throw new Error('CORS代理未配置');
+      throw new Error('CORS代理未配置，请在配置中设置 corsProxyUrl');
+    }
+    
+    if (!url) {
+      throw new Error('请求URL不能为空');
     }
     
     const proxyUrl = this.CORS_PROXY + encodeURIComponent(url);
     console.log('[BaiduPan][proxyFetch] 请求URL:', proxyUrl);
     
-    const response = await fetch(proxyUrl, {
-      ...options,
-      mode: 'cors'
-    });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    try {
+      const response = await fetch(proxyUrl, {
+        ...options,
+        mode: 'cors',
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers
+        }
+      });
+      
+      if (!response.ok) {
+        // 尝试获取更详细的错误信息
+        let errorDetail = response.statusText;
+        try {
+          const errorData = await response.json();
+          errorDetail = errorData.error || errorData.message || errorDetail;
+        } catch (e) {
+          // 无法解析JSON，使用默认错误信息
+        }
+        throw new Error(`HTTP ${response.status}: ${errorDetail}`);
+      }
+      
+      const data = await response.json();
+      
+      // 检查百度网盘API错误
+      if (data.errno && data.errno !== 0) {
+        let errorMsg = '百度网盘API错误';
+        if (data.errmsg) {
+          errorMsg += `: ${data.errmsg}`;
+        } else if (data.errno === 111) {
+          errorMsg = '访问令牌无效或已过期，请重新授权';
+        } else {
+          errorMsg += `: 错误代码 ${data.errno}`;
+        }
+        throw new Error(errorMsg);
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('[BaiduPan][proxyFetch] 请求失败:', error);
+      
+      // 增强错误信息
+      if (error.message.includes('Failed to fetch')) {
+        throw new Error('网络请求失败，请检查CORS代理是否正常运行');
+      } else if (error.message.includes('NetworkError')) {
+        throw new Error('网络错误，请检查网络连接');
+      }
+      
+      throw error;
     }
-    
-    const data = await response.json();
-    
-    if (data.errno && data.errno !== 0) {
-      throw new Error(`百度网盘API错误: ${data.errmsg || data.errno}`);
-    }
-    
-    return data;
   }
 
   /**
@@ -316,26 +354,32 @@ class BaiduPanManager {
       return false;
     }
     
-    this.api = new window.BaiduPanAPI();
-    
-    // 设置CORS代理
-    const savedProxy = localStorage.getItem('baiduPanCorsProxy');
-    if (savedProxy) {
-      this.api.setCorsProxy(savedProxy);
-      console.log('[BaiduPanManager] 使用保存的CORS代理');
-    } else if (this.config.corsProxyUrl && !this.config.corsProxyUrl.includes('YOUR_')) {
-      this.api.setCorsProxy(this.config.corsProxyUrl);
-      console.log('[BaiduPanManager] 使用配置的CORS代理');
-    } else {
-      console.warn('[BaiduPanManager] ⚠️ CORS代理未配置');
-      this.config.showSnackbar('⚠️ 百度网盘 CORS 代理未配置', 'rgb(255, 133, 32)');
+    try {
+      this.api = new window.BaiduPanAPI();
+      
+      // 设置CORS代理
+      const savedProxy = localStorage.getItem('baiduPanCorsProxy');
+      if (savedProxy) {
+        this.api.setCorsProxy(savedProxy);
+        console.log('[BaiduPanManager] 使用保存的CORS代理');
+      } else if (this.config.corsProxyUrl && !this.config.corsProxyUrl.includes('YOUR_')) {
+        this.api.setCorsProxy(this.config.corsProxyUrl);
+        console.log('[BaiduPanManager] 使用配置的CORS代理');
+      } else {
+        console.warn('[BaiduPanManager] ⚠️ CORS代理未配置');
+        this.config.showSnackbar('⚠️ 百度网盘 CORS 代理未配置，请联系管理员', 'rgb(255, 133, 32)');
+      }
+      
+      this.initialized = true;
+      const debugInfo = this.api.getDebugInfo();
+      console.log('[BaiduPanManager] API初始化完成:', debugInfo);
+      
+      return true;
+    } catch (error) {
+      console.error('[BaiduPanManager] 初始化失败:', error);
+      this.config.showSnackbar('百度网盘初始化失败: ' + error.message, 'rgb(255, 100, 100)');
+      return false;
     }
-    
-    this.initialized = true;
-    const debugInfo = this.api.getDebugInfo();
-    console.log('[BaiduPanManager] API初始化完成:', debugInfo);
-    
-    return true;
   }
 
   /**
@@ -343,14 +387,37 @@ class BaiduPanManager {
    */
   bindElements(elements) {
     console.log('[BaiduPanManager] 绑定UI元素');
+    
+    if (!elements) {
+      console.warn('[BaiduPanManager] 未提供元素对象');
+      return;
+    }
+    
     this.elements = { ...this.elements, ...elements };
     
     // 绑定按钮事件
     if (this.elements.inputButton) {
+      // 移除旧的事件监听器（如果存在）
+      const newInputButton = this.elements.inputButton.cloneNode(true);
+      this.elements.inputButton.parentNode?.replaceChild(newInputButton, this.elements.inputButton);
+      this.elements.inputButton = newInputButton;
+      
       this.elements.inputButton.addEventListener('click', () => this.showFolderPicker(false));
+      console.log('[BaiduPanManager] 输入文件夹按钮已绑定');
+    } else {
+      console.warn('[BaiduPanManager] 未找到输入文件夹按钮');
     }
+    
     if (this.elements.outputButton) {
+      // 移除旧的事件监听器（如果存在）
+      const newOutputButton = this.elements.outputButton.cloneNode(true);
+      this.elements.outputButton.parentNode?.replaceChild(newOutputButton, this.elements.outputButton);
+      this.elements.outputButton = newOutputButton;
+      
       this.elements.outputButton.addEventListener('click', () => this.showFolderPicker(true));
+      console.log('[BaiduPanManager] 输出文件夹按钮已绑定');
+    } else {
+      console.warn('[BaiduPanManager] 未找到输出文件夹按钮');
     }
     
     console.log('[BaiduPanManager] ✅ UI元素绑定完成');
@@ -375,18 +442,34 @@ class BaiduPanManager {
     if (hash && hash.includes('access_token=')) {
       console.log('[BaiduPanManager] 检测到OAuth回调');
       
-      if (!this.initialized) {
-        this.init();
-      }
-      
-      const tokenInfo = this.api.parseTokenFromHash(hash);
-      if (tokenInfo) {
-        console.log('[BaiduPanManager] Token保存成功');
-        window.history.replaceState(null, null, ' ');
-        setTimeout(() => {
-          this.config.showSnackbar('百度网盘授权成功！', 'rgb(0, 167, 44)');
-        }, 500);
-        return true;
+      try {
+        if (!this.initialized) {
+          console.log('[BaiduPanManager] 初始化管理器...');
+          if (!this.init()) {
+            this.config.showSnackbar('百度网盘初始化失败', 'rgb(255, 100, 100)');
+            return false;
+          }
+        }
+        
+        const tokenInfo = this.api.parseTokenFromHash(hash);
+        if (tokenInfo) {
+          console.log('[BaiduPanManager] Token保存成功');
+          // 清除URL中的hash，避免刷新时重复处理
+          window.history.replaceState(null, null, window.location.pathname + window.location.search);
+          
+          setTimeout(() => {
+            this.config.showSnackbar('百度网盘授权成功！', 'rgb(0, 167, 44)');
+          }, 500);
+          return true;
+        } else {
+          console.warn('[BaiduPanManager] 未能从URL中解析token');
+          this.config.showSnackbar('授权失败：无法获取访问令牌', 'rgb(255, 100, 100)');
+          return false;
+        }
+      } catch (error) {
+        console.error('[BaiduPanManager] 处理OAuth回调失败:', error);
+        this.config.showSnackbar('授权处理失败: ' + error.message, 'rgb(255, 100, 100)');
+        return false;
       }
     }
     return false;
@@ -399,24 +482,32 @@ class BaiduPanManager {
     console.log('[BaiduPanManager] 打开文件夹选择器, isOutput:', isOutput);
     
     if (!this.initialized) {
-      this.init();
+      console.log('[BaiduPanManager] 未初始化，尝试初始化...');
+      if (!this.init()) {
+        return null;
+      }
     }
     
     // 检查CORS代理
     if (!this.api || !this.api.CORS_PROXY || this.api.CORS_PROXY.includes('YOUR_')) {
       console.error('[BaiduPanManager] CORS代理未配置');
-      this.config.showSnackbar('❌ 百度网盘 CORS 代理未配置！', 'rgb(255, 100, 100)');
+      this.config.showSnackbar('❌ 百度网盘 CORS 代理未配置，请联系管理员', 'rgb(255, 100, 100)');
       return null;
     }
     
     // 检查授权
     if (!this.api.isAuthenticated()) {
       this.config.showSnackbar('请先授权百度网盘', 'rgb(255, 133, 32)');
-      const authUrl = this.api.getAuthUrl(this.config.redirectUri);
-      console.log('[BaiduPanManager] 跳转授权URL:', authUrl);
-      setTimeout(() => {
-        window.location.href = authUrl;
-      }, 1000);
+      try {
+        const authUrl = this.api.getAuthUrl(this.config.redirectUri);
+        console.log('[BaiduPanManager] 跳转授权URL:', authUrl);
+        setTimeout(() => {
+          window.location.href = authUrl;
+        }, 1000);
+      } catch (error) {
+        console.error('[BaiduPanManager] 生成授权URL失败:', error);
+        this.config.showSnackbar('生成授权URL失败: ' + error.message, 'rgb(255, 100, 100)');
+      }
       return null;
     }
     
@@ -425,8 +516,13 @@ class BaiduPanManager {
       const data = await this.api.getFileList('/');
       console.log('[BaiduPanManager] 获取文件列表成功');
       
-      if (!data.list || data.list.length === 0) {
-        this.config.showSnackbar('网盘中没有文件夹', 'rgb(255, 133, 32)');
+      if (!data || !data.list) {
+        this.config.showSnackbar('获取文件夹列表失败：返回数据无效', 'rgb(255, 100, 100)');
+        return null;
+      }
+      
+      if (data.list.length === 0) {
+        this.config.showSnackbar('网盘根目录为空', 'rgb(255, 133, 32)');
         return null;
       }
       
@@ -434,7 +530,7 @@ class BaiduPanManager {
       const folders = data.list.filter(item => item.isdir === 1);
       
       if (folders.length === 0) {
-        this.config.showSnackbar('网盘中没有文件夹', 'rgb(255, 133, 32)');
+        this.config.showSnackbar('网盘根目录中没有文件夹', 'rgb(255, 133, 32)');
         return null;
       }
       
@@ -450,7 +546,7 @@ class BaiduPanManager {
         return null;
       }
       
-      const folderName = folderPath.split('/').pop();
+      const folderName = folderPath.split('/').filter(Boolean).pop() || '根目录';
       
       // 更新显示
       const displayElement = isOutput ? this.elements.outputDisplay : this.elements.inputDisplay;
@@ -460,11 +556,17 @@ class BaiduPanManager {
       
       // 回调通知
       if (this.config.onFolderSelected) {
-        this.config.onFolderSelected({
-          isOutput: isOutput,
-          path: folderPath,
-          name: folderName
-        });
+        try {
+          await this.config.onFolderSelected({
+            isOutput: isOutput,
+            path: folderPath,
+            name: folderName
+          });
+        } catch (callbackError) {
+          console.error('[BaiduPanManager] 文件夹选择回调错误:', callbackError);
+          this.config.showSnackbar('处理文件夹选择失败: ' + callbackError.message, 'rgb(255, 100, 100)');
+          return null;
+        }
       }
       
       this.config.showSnackbar('文件夹选择成功', 'rgb(0, 167, 44)');
@@ -476,7 +578,20 @@ class BaiduPanManager {
       
     } catch (error) {
       console.error('[BaiduPanManager] 文件夹选择器错误:', error);
-      this.config.showSnackbar('获取文件夹列表失败: ' + error.message, 'rgb(255, 100, 100)');
+      
+      // 更详细的错误信息
+      let errorMsg = '获取文件夹列表失败';
+      if (error.message.includes('未授权')) {
+        errorMsg = '授权已过期，请重新授权';
+        // 清除旧的token
+        this.api.clearAccessToken();
+      } else if (error.message.includes('CORS')) {
+        errorMsg = 'CORS代理错误，请检查代理配置';
+      } else {
+        errorMsg += ': ' + error.message;
+      }
+      
+      this.config.showSnackbar(errorMsg, 'rgb(255, 100, 100)');
       
       if (this.config.onError) {
         this.config.onError(error);
@@ -490,15 +605,37 @@ class BaiduPanManager {
    * 获取文件夹统计信息
    */
   async getFolderStats(folderId) {
+    console.log('[BaiduPanManager] 获取文件夹统计信息:', folderId);
+    
     if (!this.initialized) {
-      this.init();
+      console.log('[BaiduPanManager] 未初始化，尝试初始化...');
+      if (!this.init()) {
+        throw new Error('百度网盘初始化失败');
+      }
     }
     
     if (!this.api.isAuthenticated()) {
-      throw new Error('百度网盘未授权');
+      throw new Error('百度网盘未授权，请先完成授权');
     }
     
-    return await this.api.getFolderStats(folderId);
+    if (!folderId) {
+      throw new Error('文件夹ID不能为空');
+    }
+    
+    try {
+      const stats = await this.api.getFolderStats(folderId);
+      console.log('[BaiduPanManager] 文件夹统计信息获取成功:', stats);
+      return stats;
+    } catch (error) {
+      console.error('[BaiduPanManager] 获取文件夹统计信息失败:', error);
+      
+      // 如果是授权错误，清除token
+      if (error.message.includes('未授权')) {
+        this.api.clearAccessToken();
+      }
+      
+      throw error;
+    }
   }
 
   /**
